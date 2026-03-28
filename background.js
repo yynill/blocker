@@ -188,6 +188,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'getLiveSiteTime') {
+    chrome.storage.local.get('siteTime').then(result => {
+      const siteTime = JSON.parse(JSON.stringify(result.siteTime || {}));
+      if (activeSession) {
+        const elapsed = Math.round((Date.now() - activeSession.startTime) / 1000);
+        const today = new Date().toISOString().slice(0, 10);
+        if (!siteTime[today]) siteTime[today] = {};
+        siteTime[today][activeSession.hostname] =
+          (siteTime[today][activeSession.hostname] || 0) + elapsed;
+      }
+      sendResponse({ siteTime });
+    });
+    return true;
+  }
+
+  if (message.action === 'getLiveData') {
+    chrome.storage.local.get(['siteTime', 'logs']).then(result => {
+      const siteTime = JSON.parse(JSON.stringify(result.siteTime || {}));
+      // Merge active browsing session
+      if (activeSession) {
+        const elapsed = Math.round((Date.now() - activeSession.startTime) / 1000);
+        const today = new Date().toISOString().slice(0, 10);
+        if (!siteTime[today]) siteTime[today] = {};
+        siteTime[today][activeSession.hostname] =
+          (siteTime[today][activeSession.hostname] || 0) + elapsed;
+      }
+      // In-progress blocked sessions (tabs still open)
+      const inProgress = Object.entries(allowedTabs).map(([tabId, s]) => ({
+        tabId:            parseInt(tabId),
+        domain:           s.domain,
+        reason:           s.reason,
+        startTime:        s.startTime,
+        timeSpentSeconds: Math.round((Date.now() - s.startTime) / 1000),
+      }));
+      sendResponse({ siteTime, logs: result.logs || [], inProgress });
+    });
+    return true;
+  }
+
   if (message.action === 'clearLogs') {
     chrome.storage.local.set({ logs: [] }).then(() => sendResponse({ success: true }));
     return true;

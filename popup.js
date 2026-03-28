@@ -25,33 +25,33 @@ function friendlyDay(dateKey) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-// ── Stats bar ──────────────────────────────────────────────────────────────
-function renderStats(logs, siteTime) {
-  const totalBlocked = logs.reduce((s, l) => s + (l.timeSpentSeconds || 0), 0);
-  const today = new Date().toISOString().slice(0, 10);
-  const todayData = siteTime[today] || {};
-  const todayTotal = Object.values(todayData).reduce((a, b) => a + b, 0);
+const BLOCKED_DOMAINS = [
+  'twitter.com','x.com','reddit.com','facebook.com','instagram.com',
+  'youtube.com','tiktok.com','twitch.tv','linkedin.com','netflix.com',
+  'crunchyroll.com','disneyplus.com',
+];
 
-  document.getElementById('stat-sessions').textContent = logs.length;
-  document.getElementById('stat-time').textContent = formatTime(totalBlocked);
+// ── Stats bar ──────────────────────────────────────────────────────────────
+function renderStats(logs, inProgress, siteTime) {
+  const completedTime = logs.reduce((s, l) => s + (l.timeSpentSeconds || 0), 0);
+  const inProgressTime = inProgress.reduce((s, p) => s + (p.timeSpentSeconds || 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const todayTotal = Object.values(siteTime[today] || {}).reduce((a, b) => a + b, 0);
+
+  document.getElementById('stat-sessions').textContent = logs.length + inProgress.length;
+  document.getElementById('stat-time').textContent = formatTime(completedTime + inProgressTime);
   document.getElementById('stat-today').textContent = formatTime(todayTotal);
 }
 
 // ── All-sites view ─────────────────────────────────────────────────────────
-let allDays = [];     // sorted array of date keys, oldest first
-let dayIndex = 0;     // index into allDays for current view (0 = today)
+let allDays = [];
+let dayIndex = 0;
 
-function renderAllSites(siteTime) {
-  allDays = Object.keys(siteTime).sort(); // oldest → newest
+function initAllSites(siteTime) {
+  allDays = Object.keys(siteTime).sort();
   const today = new Date().toISOString().slice(0, 10);
-  if (!allDays.includes(today) && Object.keys(siteTime).length === 0) {
-    document.getElementById('allsites-list').innerHTML = '<div class="empty">No browsing data yet.<br>Start browsing and data will appear here.</div>';
-    document.getElementById('allsites-total').textContent = '';
-    return;
-  }
   if (!allDays.includes(today)) allDays.push(today);
-
-  dayIndex = allDays.length - 1; // start at today
+  dayIndex = allDays.length - 1;
   showAllSitesDay();
 }
 
@@ -59,17 +59,15 @@ function showAllSitesDay() {
   const dateKey = allDays[dayIndex];
   const siteData = currentSiteTime[dateKey] || {};
   const list = document.getElementById('allsites-list');
-  const label = document.getElementById('day-nav-label');
-  const totalEl = document.getElementById('allsites-total');
 
-  label.textContent = friendlyDay(dateKey);
+  document.getElementById('day-nav-label').textContent = friendlyDay(dateKey);
   document.getElementById('day-prev').disabled = dayIndex === 0;
   document.getElementById('day-next').disabled = dayIndex === allDays.length - 1;
 
   const entries = Object.entries(siteData).sort((a, b) => b[1] - a[1]);
   const totalSecs = entries.reduce((s, [, v]) => s + v, 0);
 
-  totalEl.textContent = entries.length
+  document.getElementById('allsites-total').textContent = entries.length
     ? `${entries.length} site${entries.length !== 1 ? 's' : ''} · ${formatTime(totalSecs)} total`
     : '';
 
@@ -79,41 +77,26 @@ function showAllSitesDay() {
   }
 
   const maxSecs = entries[0][1];
-  const blockedSet = new Set(currentBlockedDomains());
-
   list.innerHTML = entries.map(([hostname, secs]) => {
     const pct = Math.round((secs / maxSecs) * 100);
-    const isBlocked = blockedSet.has(hostname) ||
-      [...blockedSet].some(d => hostname === d || hostname.endsWith('.' + d));
-    const barClass = isBlocked ? 'bar-blocked' : 'bar-normal';
+    const isBlocked = BLOCKED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
     return `
-      <div class="site-row" style="padding: 5px 18px;">
+      <div class="site-row" style="padding:5px 18px;">
         <span class="site-name" title="${hostname}">${hostname}</span>
         <div class="bar-wrap">
-          <div class="bar ${barClass}" style="width:${pct}%"></div>
+          <div class="bar ${isBlocked ? 'bar-blocked' : 'bar-normal'}" style="width:${pct}%"></div>
         </div>
         <span class="site-time">${formatTime(secs)}</span>
       </div>`;
   }).join('');
 }
 
-function currentBlockedDomains() {
-  // We can't import from background, so we keep a local copy for bar colouring
-  return [
-    'twitter.com','x.com','reddit.com','facebook.com','instagram.com',
-    'youtube.com','tiktok.com','twitch.tv','linkedin.com','netflix.com',
-    'crunchyroll.com','disneyplus.com',
-  ];
-}
-
 // ── Daily blocked summary ──────────────────────────────────────────────────
-function renderDaily(logs) {
+function renderDaily(logs, inProgress) {
   const list = document.getElementById('daily-list');
-  if (logs.length === 0) {
-    list.innerHTML = '<div class="empty">No sessions logged yet.</div>';
-    return;
-  }
+  const today = new Date().toISOString().slice(0, 10);
 
+  // Build totals from completed sessions
   const byDay = {};
   for (const entry of logs) {
     const day = toDateKey(entry.date);
@@ -121,23 +104,39 @@ function renderDaily(logs) {
     byDay[day][entry.domain] = (byDay[day][entry.domain] || 0) + (entry.timeSpentSeconds || 0);
   }
 
-  const days = Object.keys(byDay).sort().reverse();
+  // Merge in-progress sessions into today
+  for (const p of inProgress) {
+    if (!byDay[today]) byDay[today] = {};
+    byDay[today][p.domain] = (byDay[today][p.domain] || 0) + p.timeSpentSeconds;
+  }
 
+  if (Object.keys(byDay).length === 0) {
+    list.innerHTML = '<div class="empty">No sessions logged yet.</div>';
+    return;
+  }
+
+  const days = Object.keys(byDay).sort().reverse();
   list.innerHTML = days.map(day => {
     const sites = byDay[day];
     const dayTotal = Object.values(sites).reduce((a, b) => a + b, 0);
     const maxSecs = Math.max(...Object.values(sites));
+
+    // Which domains are currently live today
+    const liveDomainsToday = new Set(inProgress.map(p => p.domain));
+
     const rows = Object.entries(sites)
       .sort((a, b) => b[1] - a[1])
       .map(([domain, secs]) => {
         const pct = Math.round((secs / maxSecs) * 100);
+        const isLive = day === today && liveDomainsToday.has(domain);
         return `
           <div class="site-row">
             <span class="site-name">${domain}</span>
             <div class="bar-wrap"><div class="bar bar-blocked" style="width:${pct}%"></div></div>
-            <span class="site-time">${formatTime(secs)}</span>
+            <span class="site-time">${isLive ? '🔴 ' : ''}${formatTime(secs)}</span>
           </div>`;
       }).join('');
+
     return `
       <div class="day-block">
         <div class="day-header">
@@ -150,13 +149,30 @@ function renderDaily(logs) {
 }
 
 // ── Session log ────────────────────────────────────────────────────────────
-function renderLog(logs) {
+function renderLog(logs, inProgress) {
   const list = document.getElementById('log-list');
-  if (logs.length === 0) {
+
+  if (logs.length === 0 && inProgress.length === 0) {
     list.innerHTML = '<div class="empty">No sessions logged yet.</div>';
     return;
   }
-  list.innerHTML = [...logs].reverse().map(entry => `
+
+  // In-progress entries (live, open tabs) at the top
+  const liveRows = inProgress
+    .slice()
+    .sort((a, b) => b.startTime - a.startTime)
+    .map(p => `
+      <div class="log-entry log-live">
+        <div class="log-top">
+          <span class="log-domain">${p.domain}</span>
+          <span class="log-time log-time-live">🔴 ${formatTime(p.timeSpentSeconds)}</span>
+        </div>
+        <div class="log-reason">"${p.reason}"</div>
+        <div class="log-date">In progress · started ${formatDateTime(new Date(p.startTime).toISOString())}</div>
+      </div>`).join('');
+
+  // Completed entries
+  const doneRows = [...logs].reverse().map(entry => `
     <div class="log-entry">
       <div class="log-top">
         <span class="log-domain">${entry.domain}</span>
@@ -165,26 +181,24 @@ function renderLog(logs) {
       <div class="log-reason">"${entry.reason}"</div>
       <div class="log-date">${formatDateTime(entry.date)}</div>
     </div>`).join('');
+
+  list.innerHTML = liveRows + doneRows;
 }
 
 // ── Export CSV ─────────────────────────────────────────────────────────────
 function exportCSV(logs, siteTime) {
-  // Sheet 1: blocked sessions
   let csv = 'BLOCKED SITE SESSIONS\nDate,Domain,Reason,Seconds,Time\n';
   csv += logs.map(l =>
     [l.date, l.domain, `"${l.reason.replace(/"/g, '""')}"`,
      l.timeSpentSeconds || 0, formatTime(l.timeSpentSeconds)].join(',')
   ).join('\n');
 
-  // Sheet 2: daily all-sites
   csv += '\n\nALL SITES (DAILY)\nDate,Domain,Seconds,Time\n';
-  const dayEntries = [];
-  for (const [day, sites] of Object.entries(siteTime)) {
-    for (const [hostname, secs] of Object.entries(sites)) {
-      dayEntries.push([day, hostname, secs, formatTime(secs)].join(','));
-    }
-  }
-  csv += dayEntries.join('\n');
+  const rows = [];
+  for (const [day, sites] of Object.entries(siteTime))
+    for (const [hostname, secs] of Object.entries(sites))
+      rows.push([day, hostname, secs, formatTime(secs)].join(','));
+  csv += rows.join('\n');
 
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -193,6 +207,37 @@ function exportCSV(logs, siteTime) {
   a.download = `site-blocker-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ── Live update (always running) ───────────────────────────────────────────
+let liveInterval = null;
+
+function startLiveUpdate() {
+  if (liveInterval) return;
+  liveInterval = setInterval(() => {
+    chrome.runtime.sendMessage({ action: 'getLiveData' }, r => {
+      if (!r) return;
+      currentLogs       = r.logs;
+      currentSiteTime   = r.siteTime;
+      currentInProgress = r.inProgress;
+
+      // Keep allDays in sync without resetting dayIndex
+      const today = new Date().toISOString().slice(0, 10);
+      const updated = Object.keys(currentSiteTime).sort();
+      if (!updated.includes(today)) updated.push(today);
+      allDays = updated;
+      if (dayIndex >= allDays.length) dayIndex = allDays.length - 1;
+
+      renderStats(currentLogs, currentInProgress, currentSiteTime);
+      showAllSitesDay();
+      renderDaily(currentLogs, currentInProgress);
+      renderLog(currentLogs, currentInProgress);
+    });
+  }, 1000);
+}
+
+function stopLiveUpdate() {
+  if (liveInterval) { clearInterval(liveInterval); liveInterval = null; }
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
@@ -214,20 +259,23 @@ document.getElementById('day-next').addEventListener('click', () => {
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
-let currentLogs = [];
-let currentSiteTime = {};
+let currentLogs       = [];
+let currentSiteTime   = {};
+let currentInProgress = [];
 
-Promise.all([
-  new Promise(res => chrome.runtime.sendMessage({ action: 'getLogs' },     r => res(r.logs     || []))),
-  new Promise(res => chrome.runtime.sendMessage({ action: 'getSiteTime' }, r => res(r.siteTime || {}))),
-]).then(([logs, siteTime]) => {
-  currentLogs     = logs;
-  currentSiteTime = siteTime;
-  renderStats(logs, siteTime);
-  renderAllSites(siteTime);
-  renderDaily(logs);
-  renderLog(logs);
+chrome.runtime.sendMessage({ action: 'getLiveData' }, r => {
+  currentLogs       = r.logs       || [];
+  currentSiteTime   = r.siteTime   || {};
+  currentInProgress = r.inProgress || [];
+
+  renderStats(currentLogs, currentInProgress, currentSiteTime);
+  initAllSites(currentSiteTime);
+  renderDaily(currentLogs, currentInProgress);
+  renderLog(currentLogs, currentInProgress);
+  startLiveUpdate();
 });
+
+window.addEventListener('unload', stopLiveUpdate);
 
 document.getElementById('export-btn').addEventListener('click', () => {
   exportCSV(currentLogs, currentSiteTime);
@@ -239,11 +287,10 @@ document.getElementById('clear-btn').addEventListener('click', () => {
     new Promise(res => chrome.runtime.sendMessage({ action: 'clearLogs' },     r => res(r))),
     new Promise(res => chrome.runtime.sendMessage({ action: 'clearSiteTime' }, r => res(r))),
   ]).then(() => {
-    currentLogs     = [];
-    currentSiteTime = {};
-    renderStats([], {});
-    renderAllSites({});
-    renderDaily([]);
-    renderLog([]);
+    currentLogs = []; currentSiteTime = {}; currentInProgress = [];
+    renderStats([], [], {});
+    initAllSites({});
+    renderDaily([], []);
+    renderLog([], []);
   });
 });
