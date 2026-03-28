@@ -257,26 +257,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
-  if (message.action === 'getLogs') {
-    chrome.storage.local.get('logs').then(r => sendResponse({ logs: r.logs || [] }));
-    return true;
-  }
-
-  if (message.action === 'getLiveSiteTime') {
-    chrome.storage.local.get('siteTime').then(result => {
-      const siteTime = JSON.parse(JSON.stringify(result.siteTime || {}));
-      if (activeSession) {
-        const elapsed = Math.round((Date.now() - activeSession.startTime) / 1000);
-        const today = new Date().toISOString().slice(0, 10);
-        if (!siteTime[today]) siteTime[today] = {};
-        siteTime[today][activeSession.hostname] =
-          (siteTime[today][activeSession.hostname] || 0) + elapsed;
-      }
-      sendResponse({ siteTime });
-    });
-    return true;
-  }
-
   if (message.action === 'getLiveData') {
     chrome.storage.local.get(['siteTime', 'logs', 'visitCount']).then(result => {
       const siteTime = JSON.parse(JSON.stringify(result.siteTime || {}));

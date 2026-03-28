@@ -86,9 +86,12 @@ function showAllSitesDay() {
   list.innerHTML = entries.map(([hostname, secs]) => {
     const pct = Math.round((secs / maxSecs) * 100);
     const isBlocked = BLOCKED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+    const badge = isBlocked
+      ? `<span style="font-size:9px;font-weight:600;color:#c0392b;background:#2d1414;border:1px solid #5a2020;border-radius:3px;padding:1px 4px;margin-left:5px;vertical-align:middle;letter-spacing:0.03em;">BLOCKED</span>`
+      : '';
     return `
       <div class="site-row" style="padding:5px 18px;">
-        <span class="site-name" title="${hostname}">${hostname}</span>
+        <span class="site-name" title="${hostname}">${hostname}${badge}</span>
         <div class="bar-wrap">
           <div class="bar ${isBlocked ? 'bar-blocked' : 'bar-normal'}" style="width:${pct}%"></div>
         </div>
