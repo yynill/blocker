@@ -74,13 +74,28 @@
 
     textarea::placeholder { color: #555; }
 
+    .textarea-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 6px;
+      min-height: 16px;
+    }
+
     .error {
       color: #e05252;
       font-size: 12px;
       text-align: left;
-      margin-top: 6px;
-      min-height: 16px;
     }
+
+    .char-counter {
+      font-size: 11px;
+      color: #555;
+      text-align: right;
+      transition: color 0.2s;
+    }
+
+    .char-counter.met { color: #4caf50; }
 
     button {
       margin-top: 20px;
@@ -107,8 +122,11 @@
     <p class="domain" id="domain-name"></p>
 
     <label for="reason">Why do you need to visit this site?</label>
-    <textarea id="reason" placeholder="Enter your reason…" autofocus></textarea>
-    <div class="error" id="error-msg"></div>
+    <textarea id="reason" placeholder="Enter your reason… (20 chars min)" autofocus></textarea>
+    <div class="textarea-footer">
+      <div class="error" id="error-msg"></div>
+      <div class="char-counter" id="char-counter">0 / 20</div>
+    </div>
 
     <button id="proceed-btn">Proceed</button>
   </div>

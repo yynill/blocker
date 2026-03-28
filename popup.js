@@ -31,6 +31,12 @@ const BLOCKED_DOMAINS = [
   'crunchyroll.com','disneyplus.com',
 ];
 
+// ── Visit count helper ─────────────────────────────────────────────────────
+function todayVisits(domain) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (currentVisitCount[today] || {})[domain] || 0;
+}
+
 // ── Stats bar ──────────────────────────────────────────────────────────────
 function renderStats(logs, inProgress, siteTime) {
   const completedTime = logs.reduce((s, l) => s + (l.timeSpentSeconds || 0), 0);
@@ -127,11 +133,13 @@ function renderDaily(logs, inProgress) {
     const rows = Object.entries(sites)
       .sort((a, b) => b[1] - a[1])
       .map(([domain, secs]) => {
-        const pct = Math.round((secs / maxSecs) * 100);
+        const pct    = Math.round((secs / maxSecs) * 100);
         const isLive = day === today && liveDomainsToday.has(domain);
+        const visits = (currentVisitCount[day] || {})[domain] || 0;
+        const visitLabel = visits > 0 ? `<span style="color:#555;font-size:10px;">${visits}x</span>` : '';
         return `
           <div class="site-row">
-            <span class="site-name">${domain}</span>
+            <span class="site-name">${domain} ${visitLabel}</span>
             <div class="bar-wrap"><div class="bar bar-blocked" style="width:${pct}%"></div></div>
             <span class="site-time">${isLive ? '🔴 ' : ''}${formatTime(secs)}</span>
           </div>`;
@@ -149,6 +157,12 @@ function renderDaily(logs, inProgress) {
 }
 
 // ── Session log ────────────────────────────────────────────────────────────
+function worthItBadge(worthIt) {
+  if (worthIt === true)  return ' <span style="color:#5cb85c;font-size:10px;">✓ worth it</span>';
+  if (worthIt === false) return ' <span style="color:#e05252;font-size:10px;">✗ waste of time</span>';
+  return '';
+}
+
 function renderLog(logs, inProgress) {
   const list = document.getElementById('log-list');
 
@@ -157,26 +171,29 @@ function renderLog(logs, inProgress) {
     return;
   }
 
-  // In-progress entries (live, open tabs) at the top
+  // In-progress entries at top
   const liveRows = inProgress
     .slice()
     .sort((a, b) => b.startTime - a.startTime)
-    .map(p => `
-      <div class="log-entry log-live">
-        <div class="log-top">
-          <span class="log-domain">${p.domain}</span>
-          <span class="log-time log-time-live">🔴 ${formatTime(p.timeSpentSeconds)}</span>
-        </div>
-        <div class="log-reason">"${p.reason}"</div>
-        <div class="log-date">In progress · started ${formatDateTime(new Date(p.startTime).toISOString())}</div>
-      </div>`).join('');
+    .map(p => {
+      const visits = todayVisits(p.domain);
+      return `
+        <div class="log-entry log-live">
+          <div class="log-top">
+            <span class="log-domain">${p.domain}</span>
+            <span class="log-time log-time-live">🔴 ${formatTime(p.timeSpentSeconds)}</span>
+          </div>
+          <div class="log-reason">"${p.reason}"</div>
+          <div class="log-date">In progress · visit #${visits} today · started ${formatDateTime(new Date(p.startTime).toISOString())}</div>
+        </div>`;
+    }).join('');
 
   // Completed entries
   const doneRows = [...logs].reverse().map(entry => `
     <div class="log-entry">
       <div class="log-top">
         <span class="log-domain">${entry.domain}</span>
-        <span class="log-time">${formatTime(entry.timeSpentSeconds)}</span>
+        <span class="log-time">${formatTime(entry.timeSpentSeconds)}${worthItBadge(entry.worthIt)}</span>
       </div>
       <div class="log-reason">"${entry.reason}"</div>
       <div class="log-date">${formatDateTime(entry.date)}</div>
@@ -220,6 +237,7 @@ function startLiveUpdate() {
       currentLogs       = r.logs;
       currentSiteTime   = r.siteTime;
       currentInProgress = r.inProgress;
+      currentVisitCount = r.visitCount || {};
 
       // Keep allDays in sync without resetting dayIndex
       const today = new Date().toISOString().slice(0, 10);
@@ -262,11 +280,13 @@ document.getElementById('day-next').addEventListener('click', () => {
 let currentLogs       = [];
 let currentSiteTime   = {};
 let currentInProgress = [];
+let currentVisitCount = {};
 
 chrome.runtime.sendMessage({ action: 'getLiveData' }, r => {
-  currentLogs       = r.logs       || [];
-  currentSiteTime   = r.siteTime   || {};
-  currentInProgress = r.inProgress || [];
+  currentLogs       = r.logs        || [];
+  currentSiteTime   = r.siteTime    || {};
+  currentInProgress = r.inProgress  || [];
+  currentVisitCount = r.visitCount  || {};
 
   renderStats(currentLogs, currentInProgress, currentSiteTime);
   initAllSites(currentSiteTime);
@@ -284,10 +304,11 @@ document.getElementById('export-btn').addEventListener('click', () => {
 document.getElementById('clear-btn').addEventListener('click', () => {
   if (!confirm('Clear all logs and browsing data?')) return;
   Promise.all([
-    new Promise(res => chrome.runtime.sendMessage({ action: 'clearLogs' },     r => res(r))),
-    new Promise(res => chrome.runtime.sendMessage({ action: 'clearSiteTime' }, r => res(r))),
+    new Promise(res => chrome.runtime.sendMessage({ action: 'clearLogs' },       r => res(r))),
+    new Promise(res => chrome.runtime.sendMessage({ action: 'clearSiteTime' },   r => res(r))),
+    new Promise(res => chrome.runtime.sendMessage({ action: 'clearVisitCount' }, r => res(r))),
   ]).then(() => {
-    currentLogs = []; currentSiteTime = {}; currentInProgress = [];
+    currentLogs = []; currentSiteTime = {}; currentInProgress = []; currentVisitCount = {};
     renderStats([], [], {});
     initAllSites({});
     renderDaily([], []);
