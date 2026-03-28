@@ -166,13 +166,37 @@
     .site-time { font-size: 11px; color: #555; width: 48px; text-align: right; flex-shrink: 0; }
 
     /* ── All-sites view ── */
+    .period-nav {
+      display: flex;
+      gap: 6px;
+      padding: 8px 18px;
+      border-bottom: 1px solid #1e1e1e;
+      background: #131313;
+      flex-shrink: 0;
+    }
+
+    .period-btn {
+      flex: 1;
+      padding: 5px 0;
+      border: 1px solid #2e2e2e;
+      border-radius: 5px;
+      background: #1a1a1a;
+      color: #555;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .period-btn.active { background: #252525; color: #fff; border-color: #555; }
+    .period-btn:hover { background: #222; color: #ccc; }
+
     .day-nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 18px;
+      padding: 6px 18px;
       border-bottom: 1px solid #1e1e1e;
-      background: #131313;
+      background: #0f0f0f;
       flex-shrink: 0;
     }
 
@@ -252,7 +276,13 @@
 
   <!-- All sites tracker -->
   <div class="tab-panel active" id="panel-allsites">
-    <div class="day-nav">
+    <div class="period-nav">
+      <button class="period-btn active" data-period="day">Day</button>
+      <button class="period-btn" data-period="week">Week</button>
+      <button class="period-btn" data-period="month">Month</button>
+      <button class="period-btn" data-period="year">Year</button>
+    </div>
+    <div class="day-nav" id="day-nav-row">
       <button class="day-nav-btn" id="day-prev">‹</button>
       <span class="day-nav-label" id="day-nav-label">Today</span>
       <button class="day-nav-btn" id="day-next" disabled>›</button>

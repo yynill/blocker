@@ -52,33 +52,73 @@ function renderStats(logs, inProgress, siteTime) {
 // ── All-sites view ─────────────────────────────────────────────────────────
 let allDays = [];
 let dayIndex = 0;
+let currentPeriod = 'day';
 
 function initAllSites(siteTime) {
   allDays = Object.keys(siteTime).sort();
   const today = new Date().toISOString().slice(0, 10);
   if (!allDays.includes(today)) allDays.push(today);
   dayIndex = allDays.length - 1;
-  showAllSitesDay();
+  showAllSites();
 }
 
-function showAllSitesDay() {
-  const dateKey = allDays[dayIndex];
-  const siteData = currentSiteTime[dateKey] || {};
-  const list = document.getElementById('allsites-list');
+function aggregatePeriod(siteTime, period, dayKey) {
+  const today = new Date().toISOString().slice(0, 10);
+  let keys;
+  if (period === 'day') {
+    keys = [dayKey];
+  } else if (period === 'week') {
+    keys = [];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      keys.push(new Date(now - i * 86400000).toISOString().slice(0, 10));
+    }
+  } else if (period === 'month') {
+    const prefix = today.slice(0, 7);
+    keys = Object.keys(siteTime).filter(k => k.startsWith(prefix));
+  } else {
+    const prefix = today.slice(0, 4);
+    keys = Object.keys(siteTime).filter(k => k.startsWith(prefix));
+  }
+  const totals = {};
+  for (const key of keys) {
+    for (const [host, secs] of Object.entries(siteTime[key] || {})) {
+      totals[host] = (totals[host] || 0) + secs;
+    }
+  }
+  return totals;
+}
 
-  document.getElementById('day-nav-label').textContent = friendlyDay(dateKey);
+function periodLabel() {
+  if (currentPeriod === 'day') return friendlyDay(allDays[dayIndex]);
+  if (currentPeriod === 'week') return 'Last 7 Days';
+  if (currentPeriod === 'month') {
+    return new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  return new Date().getFullYear().toString();
+}
+
+function showAllSites() {
+  const dayKey = allDays[dayIndex];
+  const dayNavRow = document.getElementById('day-nav-row');
+  dayNavRow.style.display = currentPeriod === 'day' ? '' : 'none';
+
+  document.getElementById('day-nav-label').textContent = friendlyDay(dayKey);
   document.getElementById('day-prev').disabled = dayIndex === 0;
   document.getElementById('day-next').disabled = dayIndex === allDays.length - 1;
+
+  const siteData = aggregatePeriod(currentSiteTime, currentPeriod, dayKey);
+  const list = document.getElementById('allsites-list');
 
   const entries = Object.entries(siteData).sort((a, b) => b[1] - a[1]);
   const totalSecs = entries.reduce((s, [, v]) => s + v, 0);
 
   document.getElementById('allsites-total').textContent = entries.length
-    ? `${entries.length} site${entries.length !== 1 ? 's' : ''} · ${formatTime(totalSecs)} total`
+    ? `${periodLabel()} · ${entries.length} site${entries.length !== 1 ? 's' : ''} · ${formatTime(totalSecs)} total`
     : '';
 
   if (entries.length === 0) {
-    list.innerHTML = '<div class="empty">No data for this day.</div>';
+    list.innerHTML = '<div class="empty">No data for this period.</div>';
     return;
   }
 
@@ -250,7 +290,7 @@ function startLiveUpdate() {
       if (dayIndex >= allDays.length) dayIndex = allDays.length - 1;
 
       renderStats(currentLogs, currentInProgress, currentSiteTime);
-      showAllSitesDay();
+      showAllSites();
       renderDaily(currentLogs, currentInProgress);
       renderLog(currentLogs, currentInProgress);
     });
@@ -272,11 +312,20 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 document.getElementById('day-prev').addEventListener('click', () => {
-  if (dayIndex > 0) { dayIndex--; showAllSitesDay(); }
+  if (dayIndex > 0) { dayIndex--; showAllSites(); }
 });
 
 document.getElementById('day-next').addEventListener('click', () => {
-  if (dayIndex < allDays.length - 1) { dayIndex++; showAllSitesDay(); }
+  if (dayIndex < allDays.length - 1) { dayIndex++; showAllSites(); }
+});
+
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentPeriod = btn.dataset.period;
+    showAllSites();
+  });
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────

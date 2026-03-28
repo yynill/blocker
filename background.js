@@ -19,6 +19,11 @@ chrome.storage.session.get('allowedTabs').then(result => {
   allowedTabs = result.allowedTabs || {};
 });
 
+// Begin tracking immediately on SW startup / restart
+chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+  if (tabs[0]) startActive(tabs[0].id);
+});
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getHostname(url) {
   try { return new URL(url).hostname; } catch { return null; }
@@ -194,6 +199,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
           activeSession = { tabId, hostname, startTime: Date.now() };
         });
       }
+    } else if (!activeSession && tab.active) {
+      // SW restarted mid-session — resume tracking this tab
+      startActive(tabId);
     }
   }
 });
