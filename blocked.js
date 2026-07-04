@@ -1,43 +1,22 @@
-const MIN_CHARS = 20;
+const params = new URLSearchParams(window.location.search);
+document.getElementById('domain-name').textContent = params.get('domain') || '';
 
-const params    = new URLSearchParams(window.location.search);
-const targetUrl = params.get('url');
-const textarea  = document.getElementById('reason');
-const counterEl = document.getElementById('char-counter');
-const errorEl   = document.getElementById('error-msg');
-
-try {
-  document.getElementById('domain-name').textContent = new URL(targetUrl).hostname;
-} catch {
-  document.getElementById('domain-name').textContent = targetUrl;
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// ── Character counter ──────────────────────────────────────────────────────
-textarea.addEventListener('input', () => {
-  const len = textarea.value.trim().length;
-  counterEl.textContent = `${len} / ${MIN_CHARS}`;
-  counterEl.classList.toggle('met', len >= MIN_CHARS);
-});
-
-// ── Submit ─────────────────────────────────────────────────────────────────
-function tryProceed() {
-  const reason = textarea.value.trim();
-  errorEl.textContent = '';
-
-  if (!reason) {
-    errorEl.textContent = 'Please enter a reason before proceeding.';
-    return;
-  }
-  if (reason.length < MIN_CHARS) {
-    errorEl.textContent = `Reason must be at least ${MIN_CHARS} characters.`;
-    return;
-  }
-
-  chrome.runtime.sendMessage({ action: 'allow', url: targetUrl, reason });
+if (BLOCKED_LINES.length > 0) {
+  document.getElementById('headline').textContent = pickRandom(BLOCKED_LINES);
 }
 
-document.getElementById('proceed-btn').addEventListener('click', tryProceed);
+if (BLOCKED_IMAGES.length > 0) {
+  const imgEl = document.getElementById('blocked-image');
+  imgEl.src = chrome.runtime.getURL('images/' + pickRandom(BLOCKED_IMAGES));
+  imgEl.classList.add('visible');
+}
 
-textarea.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tryProceed(); }
+document.getElementById('close-btn').addEventListener('click', () => {
+  chrome.tabs.getCurrent(tab => {
+    if (tab) chrome.tabs.remove(tab.id);
+  });
 });

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Site Blocker",
   "version": "1.0",
-  "description": "Block distracting sites. Enter a reason to proceed. Sessions are logged.",
-  "permissions": ["tabs", "storage", "webNavigation", "windows", "scripting"],
+  "description": "Block distracting sites from a simple, editable list.",
+  "permissions": ["tabs", "storage"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
