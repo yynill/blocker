@@ -3,6 +3,7 @@
 const BLOCKED_SITES = [
   'linkedin.com', 'x.com', 'twitter.com', 'youtube.com', 'instagram.com',
   'facebook.com', 'reddit.com', 'tiktok.com', 'twitch.tv', 'netflix.com',
+  'disneyplus.com', 'pinterest.com',
 ];
 
 let enabled = true;
