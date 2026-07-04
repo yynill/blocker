@@ -1,6 +1,24 @@
 const params = new URLSearchParams(window.location.search);
 document.getElementById('domain-name').textContent = params.get('domain') || '';
 
+const savedUrl = params.get('url');
+if (savedUrl) {
+  document.getElementById('saved-url').textContent = savedUrl;
+  document.getElementById('saved-url-row').classList.add('visible');
+
+  document.getElementById('copy-btn').addEventListener('click', async (e) => {
+    await navigator.clipboard.writeText(savedUrl);
+    const btn = e.currentTarget;
+    const original = btn.textContent;
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 1200);
+  });
+}
+
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }

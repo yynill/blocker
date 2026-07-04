@@ -6,6 +6,10 @@ const BLOCKED_SITES = [
   'disneyplus.com', 'pinterest.com',
 ];
 
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+
+const MAX_HISTORY = 50;
+
 let enabled = true;
 
 chrome.storage.sync.get('enabled').then(result => {
@@ -25,6 +29,19 @@ function matchedBlockedDomain(hostname) {
   return BLOCKED_SITES.find(site => hostname === site || hostname.endsWith('.' + site));
 }
 
+// Skips logging a duplicate entry if the same URL got blocked again within
+// a few seconds (page reloads/redirect loops shouldn't spam the history).
+async function addToHistory(url, domain) {
+  const { blockedHistory = [] } = await chrome.storage.local.get('blockedHistory');
+  const now = Date.now();
+  const last = blockedHistory[0];
+  if (last && last.url === url && now - last.time < 3000) return;
+
+  blockedHistory.unshift({ url, domain, time: now });
+  blockedHistory.length = Math.min(blockedHistory.length, MAX_HISTORY);
+  await chrome.storage.local.set({ blockedHistory });
+}
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!enabled) return;
   const url = tab.url;
@@ -36,7 +53,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
   const blockedDomain = matchedBlockedDomain(hostname);
   if (blockedDomain) {
-    const interstitial = chrome.runtime.getURL('blocked.html') + '?domain=' + encodeURIComponent(hostname);
+    addToHistory(url, hostname);
+    const interstitial = chrome.runtime.getURL('blocked.html')
+      + '?domain=' + encodeURIComponent(hostname)
+      + '&url=' + encodeURIComponent(url);
     chrome.tabs.update(tabId, { url: interstitial });
   }
 });

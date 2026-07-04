@@ -3,14 +3,16 @@
   "name": "Site Blocker",
   "version": "1.0",
   "description": "Block distracting sites from a simple, editable list.",
-  "permissions": ["tabs", "storage"],
+  "permissions": ["tabs", "storage", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Site Blocker"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "web_accessible_resources": [
     {

@@ -62,6 +62,29 @@
             margin-bottom: 32px;
         }
 
+        .saved-url-row {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            max-width: 100%;
+            margin-bottom: 24px;
+        }
+
+        .saved-url-row.visible {
+            display: flex;
+        }
+
+        .saved-url {
+            font-size: 12px;
+            font-family: monospace;
+            color: #777;
+            max-width: 60vw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         button {
             padding: 12px 24px;
             background: transparent;
@@ -77,6 +100,17 @@
             color: #ccc;
             border-color: #555;
         }
+
+        .copy-btn {
+            padding: 4px 10px;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .copy-btn.copied {
+            color: #5cb85c;
+            border-color: #2d5a2d;
+        }
     </style>
 </head>
 
@@ -85,6 +119,10 @@
         <img class="blocked-image" id="blocked-image" alt="" />
         <h1 id="headline">You will die.</h1>
         <p class="domain" id="domain-name"></p>
+        <div class="saved-url-row" id="saved-url-row">
+            <span class="saved-url" id="saved-url"></span>
+            <button class="copy-btn" id="copy-btn">Copy link</button>
+        </div>
         <button id="close-btn">Close this tab</button>
     </div>
     <script src="blocked-content.js"></script>
