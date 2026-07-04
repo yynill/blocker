@@ -58,6 +58,8 @@ const BLOCKED_LINES = [
     'Cheap dopamine, expensive life.',
     'Stop negotiating. You already know the answer.',
     'Dead men scroll nothing. You still have time.',
+    'Are you sure you want to spend your time like this?',
+    'You have consumed enough. Start creating.',
 ];
 
 // Drop image files into images/, then list their filenames here.
@@ -68,6 +70,7 @@ const BLOCKED_IMAGES = [
   '18227b9b958d499c55a4a383eb554ff7.jpg',
   '1a3dd90ba2515c10d4f2a687f30c950e.jpg',
   '1c29b719ae36178601b4b0052100781b.jpg',
+  '223b4e63c006f1d4bef905c8f4e7d5fc.jpg',
   '301853caa6d8d8fb51ab429226b79ef5.jpg',
   '31547929104041161e2efb6e82c1fe04.jpg',
   '43369870cc238570e0c859993e13a0b6.jpg',
