@@ -33,15 +33,19 @@ function pickRandomExcluding(arr, storageKey) {
   return pick;
 }
 
-if (BLOCKED_LINES.length > 0) {
-  document.getElementById('headline').textContent = pickRandomExcluding(BLOCKED_LINES, 'lastBlockedLine');
-}
+fetch(chrome.runtime.getURL('content.json'))
+  .then(r => r.json())
+  .then(({ lines, images }) => {
+    if (lines.length > 0) {
+      document.getElementById('headline').textContent = pickRandomExcluding(lines, 'lastBlockedLine');
+    }
 
-if (BLOCKED_IMAGES.length > 0) {
-  const imgEl = document.getElementById('blocked-image');
-  imgEl.src = chrome.runtime.getURL('images/' + pickRandomExcluding(BLOCKED_IMAGES, 'lastBlockedImage'));
-  imgEl.classList.add('visible');
-}
+    if (images.length > 0) {
+      const imgEl = document.getElementById('blocked-image');
+      imgEl.src = chrome.runtime.getURL('images/' + pickRandomExcluding(images, 'lastBlockedImage'));
+      imgEl.classList.add('visible');
+    }
+  });
 
 document.getElementById('close-btn').addEventListener('click', () => {
   chrome.tabs.getCurrent(tab => {

@@ -1,18 +1,19 @@
-const listEl        = document.getElementById('site-list');
-const toggleBtn     = document.getElementById('toggle-btn');
+const breakBtn      = document.getElementById('break-btn');
 const historyListEl = document.getElementById('history-list');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
+const incognitoWarningEl = document.getElementById('incognito-warning');
+const fixIncognitoBtn = document.getElementById('fix-incognito-btn');
 
-function render(blockedSites) {
-  if (blockedSites.length === 0) {
-    listEl.innerHTML = '<div class="empty">No sites blocked.</div>';
-    return;
-  }
-  listEl.innerHTML = blockedSites
-    .slice().sort()
-    .map(domain => `<div class="site-row">${domain}</div>`)
-    .join('');
-}
+// Extensions can't grant themselves Incognito access — only the user can via
+// chrome://extensions. Nag until they do, since that toggle is otherwise a
+// silent, total bypass of every block.
+chrome.extension.isAllowedIncognitoAccess().then(allowed => {
+  incognitoWarningEl.classList.toggle('visible', !allowed);
+});
+
+fixIncognitoBtn.addEventListener('click', () => {
+  chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+});
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -58,21 +59,61 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-function renderToggle(enabled) {
-  toggleBtn.textContent = `Blocker: ${enabled ? 'ON' : 'OFF'}`;
-  toggleBtn.classList.toggle('off', !enabled);
-  toggleBtn.dataset.enabled = enabled;
+let pauseUntil = 0;
+let countdownInterval = null;
+
+function formatRemaining(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-toggleBtn.addEventListener('click', () => {
-  const enabled = toggleBtn.dataset.enabled !== 'true';
-  chrome.storage.sync.set({ enabled });
-  renderToggle(enabled);
+function stopCountdown() {
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = null;
+}
+
+function renderBreak() {
+  const remaining = pauseUntil - Date.now();
+  if (remaining > 0) {
+    breakBtn.textContent = `⏸ Paused — ${formatRemaining(remaining)} left`;
+    breakBtn.classList.add('paused');
+    breakBtn.disabled = true;
+  } else {
+    breakBtn.textContent = '☕ 10 min free';
+    breakBtn.classList.remove('paused');
+    breakBtn.disabled = false;
+    stopCountdown();
+  }
+}
+
+function startCountdown() {
+  stopCountdown();
+  countdownInterval = setInterval(renderBreak, 1000);
+}
+
+breakBtn.addEventListener('click', () => {
+  if (breakBtn.disabled) return;
+  chrome.runtime.sendMessage({ action: 'startBreak' }, r => {
+    pauseUntil = r.pauseUntil;
+    renderBreak();
+    startCountdown();
+  });
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && changes.pauseUntil) {
+    pauseUntil = changes.pauseUntil.newValue || 0;
+    renderBreak();
+    if (pauseUntil - Date.now() > 0) startCountdown();
+  }
 });
 
 chrome.runtime.sendMessage({ action: 'getBlockedSites' }, r => {
-  render(r.blockedSites || []);
-  renderToggle(r.enabled !== false);
+  pauseUntil = r.pauseUntil || 0;
+  renderBreak();
+  if (pauseUntil - Date.now() > 0) startCountdown();
 });
 
 loadHistory();
