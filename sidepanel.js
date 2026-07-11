@@ -1,4 +1,16 @@
-const breakBtn      = document.getElementById('break-btn');
+const unlockBtn      = document.getElementById('unlock-btn');
+const relockBtn      = document.getElementById('relock-btn');
+const waitPanel      = document.getElementById('wait-panel');
+const waitLabelEl    = document.getElementById('wait-label');
+const progressFillEl = document.getElementById('progress-fill');
+const waitCancelBtn  = document.getElementById('wait-cancel-btn');
+const codePanel      = document.getElementById('code-panel');
+const codeDisplayEl  = document.getElementById('code-display');
+const codeTimerEl    = document.getElementById('code-timer');
+const codeInput      = document.getElementById('code-input');
+const codeErrorEl    = document.getElementById('code-error');
+const codeConfirmBtn = document.getElementById('code-confirm-btn');
+const codeCancelBtn  = document.getElementById('code-cancel-btn');
 const historyListEl = document.getElementById('history-list');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
 const incognitoWarningEl = document.getElementById('incognito-warning');
@@ -59,8 +71,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-let pauseUntil = 0;
-let countdownInterval = null;
+const WAIT_MS = 60 * 1000;
+
+let unlockUntil = 0;
+let codeExpiresAt = 0;
+let waitStartedAt = 0;
+let unlockCountdownInterval = null;
+let codeCountdownInterval = null;
+let waitInterval = null;
 
 function formatRemaining(ms) {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -69,51 +87,171 @@ function formatRemaining(ms) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function stopCountdown() {
-  if (countdownInterval) clearInterval(countdownInterval);
-  countdownInterval = null;
+function stopUnlockCountdown() {
+  if (unlockCountdownInterval) clearInterval(unlockCountdownInterval);
+  unlockCountdownInterval = null;
 }
 
-function renderBreak() {
-  const remaining = pauseUntil - Date.now();
+function stopCodeCountdown() {
+  if (codeCountdownInterval) clearInterval(codeCountdownInterval);
+  codeCountdownInterval = null;
+}
+
+function stopWait() {
+  if (waitInterval) clearInterval(waitInterval);
+  waitInterval = null;
+}
+
+function showIdle() {
+  stopUnlockCountdown();
+  stopCodeCountdown();
+  stopWait();
+  waitPanel.classList.remove('visible');
+  progressFillEl.style.width = '0%';
+  codePanel.classList.remove('visible');
+  codeInput.value = '';
+  codeErrorEl.textContent = '';
+  unlockBtn.classList.remove('unlocked');
+  unlockBtn.disabled = false;
+  unlockBtn.textContent = '🔓 Unlock everything (1h)';
+  relockBtn.classList.remove('visible');
+}
+
+function renderUnlockState() {
+  const remaining = unlockUntil - Date.now();
   if (remaining > 0) {
-    breakBtn.textContent = `⏸ Paused — ${formatRemaining(remaining)} left`;
-    breakBtn.classList.add('paused');
-    breakBtn.disabled = true;
+    stopCodeCountdown();
+    codePanel.classList.remove('visible');
+    unlockBtn.classList.add('unlocked');
+    unlockBtn.disabled = true;
+    unlockBtn.textContent = `🔓 Unlocked — ${formatRemaining(remaining)} left`;
+    relockBtn.classList.add('visible');
   } else {
-    breakBtn.textContent = '☕ 10 min free';
-    breakBtn.classList.remove('paused');
-    breakBtn.disabled = false;
-    stopCountdown();
+    showIdle();
   }
 }
 
-function startCountdown() {
-  stopCountdown();
-  countdownInterval = setInterval(renderBreak, 1000);
+function startUnlockCountdown() {
+  stopUnlockCountdown();
+  unlockCountdownInterval = setInterval(renderUnlockState, 1000);
 }
 
-breakBtn.addEventListener('click', () => {
-  if (breakBtn.disabled) return;
-  chrome.runtime.sendMessage({ action: 'startBreak' }, r => {
-    pauseUntil = r.pauseUntil;
-    renderBreak();
-    startCountdown();
+function renderCodeTimer() {
+  const remaining = codeExpiresAt - Date.now();
+  if (remaining > 0) {
+    codeTimerEl.textContent = `Code expires in ${formatRemaining(remaining)}`;
+  } else {
+    showIdle();
+  }
+}
+
+// Requesting the code immediately would make the "friction" purely typing
+// effort, which becomes a mindless reflex. Making the button wait 60s before
+// the code even exists forces an actual pause the urge has to survive.
+function renderWait() {
+  const elapsed = Date.now() - waitStartedAt;
+  const remaining = WAIT_MS - elapsed;
+  if (remaining <= 0) {
+    stopWait();
+    waitPanel.classList.remove('visible');
+    beginCodeEntry();
+    return;
+  }
+  progressFillEl.style.width = `${Math.min(100, (elapsed / WAIT_MS) * 100)}%`;
+  waitLabelEl.textContent = `Hold on… ${Math.ceil(remaining / 1000)}s`;
+}
+
+function startWait() {
+  waitStartedAt = Date.now();
+  progressFillEl.style.width = '0%';
+  waitPanel.classList.add('visible');
+  unlockBtn.disabled = true;
+  renderWait();
+  stopWait();
+  waitInterval = setInterval(renderWait, 100);
+}
+
+function beginCodeEntry() {
+  unlockBtn.disabled = true;
+  chrome.runtime.sendMessage({ action: 'requestUnlockCode' }, r => {
+    unlockBtn.disabled = false;
+    codeExpiresAt = r.expiresAt;
+    codeDisplayEl.textContent = r.code;
+    codeErrorEl.textContent = '';
+    codeInput.value = '';
+    codePanel.classList.add('visible');
+    renderCodeTimer();
+    stopCodeCountdown();
+    codeCountdownInterval = setInterval(renderCodeTimer, 1000);
+    codeInput.focus();
+  });
+}
+
+unlockBtn.addEventListener('click', () => {
+  if (unlockBtn.disabled) return;
+  startWait();
+});
+
+waitCancelBtn.addEventListener('click', showIdle);
+
+relockBtn.addEventListener('click', () => {
+  relockBtn.disabled = true;
+  chrome.runtime.sendMessage({ action: 'relock' }, () => {
+    relockBtn.disabled = false;
+    unlockUntil = 0;
+    showIdle();
   });
 });
 
+// The entire point of the code is the friction of typing it by hand — a
+// pasted code is just a copy-paste click-through, no different from a
+// single confirm button.
+codeInput.addEventListener('paste', e => e.preventDefault());
+codeInput.addEventListener('drop', e => e.preventDefault());
+
+function submitCode() {
+  const entered = codeInput.value.trim();
+  if (!entered) return;
+  chrome.runtime.sendMessage({ action: 'submitUnlockCode', code: entered }, r => {
+    if (r && r.ok) {
+      unlockUntil = r.unlockUntil;
+      renderUnlockState();
+      startUnlockCountdown();
+    } else if (r && r.reason === 'expired') {
+      codeErrorEl.textContent = 'Code expired — try again.';
+      showIdle();
+    } else {
+      codeErrorEl.textContent = 'Wrong code.';
+      codeInput.value = '';
+      codeInput.focus();
+    }
+  });
+}
+
+codeConfirmBtn.addEventListener('click', submitCode);
+codeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitCode();
+});
+codeCancelBtn.addEventListener('click', showIdle);
+
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.pauseUntil) {
-    pauseUntil = changes.pauseUntil.newValue || 0;
-    renderBreak();
-    if (pauseUntil - Date.now() > 0) startCountdown();
+  if (area === 'sync' && changes.unlockUntil) {
+    unlockUntil = changes.unlockUntil.newValue || 0;
+    if (unlockUntil - Date.now() > 0) {
+      renderUnlockState();
+      startUnlockCountdown();
+    } else {
+      showIdle();
+    }
   }
 });
 
 chrome.runtime.sendMessage({ action: 'getBlockedSites' }, r => {
-  pauseUntil = r.pauseUntil || 0;
-  renderBreak();
-  if (pauseUntil - Date.now() > 0) startCountdown();
+  unlockUntil = r.unlockUntil || 0;
+  if (unlockUntil - Date.now() > 0) {
+    renderUnlockState();
+    startUnlockCountdown();
+  }
 });
 
 loadHistory();
