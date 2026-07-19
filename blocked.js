@@ -3,7 +3,9 @@ document.getElementById('domain-name').textContent = params.get('domain') || '';
 
 const savedUrl = params.get('url');
 if (savedUrl) {
-  document.getElementById('saved-url').textContent = savedUrl;
+  const savedUrlEl = document.getElementById('saved-url');
+  savedUrlEl.textContent = savedUrl;
+  savedUrlEl.href = savedUrl;
   document.getElementById('saved-url-row').classList.add('visible');
 
   document.getElementById('copy-btn').addEventListener('click', async (e) => {

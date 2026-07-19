@@ -95,6 +95,24 @@
 
     .relock-btn:hover { background: #2e1a1a; color: #ff6b63; }
 
+    .quick-btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      font-size: 13px;
+      color: #999;
+    }
+
+    .quick-btn:hover { background: #252525; color: #fff; }
+
+    .quick-btn.hidden { display: none; }
+
+    .quick-count {
+      color: #666;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+
     .wait-panel {
       display: none;
       flex-direction: column;
@@ -265,6 +283,7 @@
     }
 
     .history-url {
+      display: block;
       font-size: 11px;
       font-family: monospace;
       color: #555;
@@ -273,9 +292,12 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       cursor: pointer;
+      text-decoration: none;
     }
 
-    .history-url:hover { color: #999; }
+    .history-url:visited { color: #555; }
+
+    .history-url:hover { color: #999; text-decoration: underline; }
 
   </style>
 </head>
@@ -292,6 +314,7 @@
   <div class="toggle-row">
     <button id="unlock-btn" class="unlock-btn">🔓 Unlock everything (1h)</button>
     <button id="relock-btn" class="relock-btn">🔒 Lock again now</button>
+    <button id="quick-btn" class="quick-btn"><span id="quick-label">⏱️ Quick check (90s)</span><span class="quick-count" id="quick-count"></span></button>
     <div class="wait-panel" id="wait-panel">
       <div class="wait-label" id="wait-label">Hold on… 60s</div>
       <div class="progress-track">

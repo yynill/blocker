@@ -1,5 +1,8 @@
 const unlockBtn      = document.getElementById('unlock-btn');
 const relockBtn      = document.getElementById('relock-btn');
+const quickBtn       = document.getElementById('quick-btn');
+const quickLabelEl   = document.getElementById('quick-label');
+const quickCountEl   = document.getElementById('quick-count');
 const waitPanel      = document.getElementById('wait-panel');
 const waitLabelEl    = document.getElementById('wait-label');
 const progressFillEl = document.getElementById('progress-fill');
@@ -42,7 +45,7 @@ function renderHistory(blockedHistory) {
     <div class="history-row">
       <div class="history-domain">${escapeHtml(entry.domain)}</div>
       <div class="history-time">${new Date(entry.time).toLocaleString()}</div>
-      <div class="history-url" data-url="${escapeHtml(entry.url)}" title="Click to copy">${escapeHtml(entry.url)}</div>
+      <a class="history-url" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="Open link">${escapeHtml(entry.url)}</a>
     </div>
   `).join('');
 }
@@ -51,15 +54,6 @@ async function loadHistory() {
   const { blockedHistory = [] } = await chrome.storage.local.get('blockedHistory');
   renderHistory(blockedHistory);
 }
-
-historyListEl.addEventListener('click', async (e) => {
-  const urlEl = e.target.closest('.history-url');
-  if (!urlEl) return;
-  await navigator.clipboard.writeText(urlEl.dataset.url);
-  const original = urlEl.textContent;
-  urlEl.textContent = 'Copied!';
-  setTimeout(() => { urlEl.textContent = original; }, 1000);
-});
 
 clearHistoryBtn.addEventListener('click', () => {
   chrome.storage.local.set({ blockedHistory: [] });
@@ -74,6 +68,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 const WAIT_MS = 60 * 1000;
 
 let unlockUntil = 0;
+let unlockSource = null;
 let codeExpiresAt = 0;
 let waitStartedAt = 0;
 let unlockCountdownInterval = null;
@@ -102,6 +97,10 @@ function stopWait() {
   waitInterval = null;
 }
 
+function renderQuickCount(count) {
+  quickCountEl.textContent = count > 0 ? ` · ${count} today` : '';
+}
+
 function showIdle() {
   stopUnlockCountdown();
   stopCodeCountdown();
@@ -115,6 +114,8 @@ function showIdle() {
   unlockBtn.disabled = false;
   unlockBtn.textContent = '🔓 Unlock everything (1h)';
   relockBtn.classList.remove('visible');
+  quickBtn.classList.remove('hidden');
+  quickLabelEl.textContent = '⏱️ Quick check (90s)';
 }
 
 function renderUnlockState() {
@@ -126,6 +127,15 @@ function renderUnlockState() {
     unlockBtn.disabled = true;
     unlockBtn.textContent = `🔓 Unlocked — ${formatRemaining(remaining)} left`;
     relockBtn.classList.add('visible');
+    if (unlockSource === 'quick') {
+      // Stays visible and clickable during a quick unlock so clicking again
+      // resets the countdown back to a fresh 90s instead of being stuck
+      // watching it run out.
+      quickBtn.classList.remove('hidden');
+      quickLabelEl.textContent = '🔄 Reset to 90s';
+    } else {
+      quickBtn.classList.add('hidden');
+    }
   } else {
     showIdle();
   }
@@ -194,6 +204,21 @@ unlockBtn.addEventListener('click', () => {
 
 waitCancelBtn.addEventListener('click', showIdle);
 
+quickBtn.addEventListener('click', () => {
+  if (quickBtn.disabled) return;
+  quickBtn.disabled = true;
+  chrome.runtime.sendMessage({ action: 'quickUnlock' }, r => {
+    quickBtn.disabled = false;
+    if (r && r.ok) {
+      unlockUntil = r.unlockUntil;
+      unlockSource = 'quick';
+      renderQuickCount(r.count);
+      renderUnlockState();
+      startUnlockCountdown();
+    }
+  });
+});
+
 relockBtn.addEventListener('click', () => {
   relockBtn.disabled = true;
   chrome.runtime.sendMessage({ action: 'relock' }, () => {
@@ -215,6 +240,7 @@ function submitCode() {
   chrome.runtime.sendMessage({ action: 'submitUnlockCode', code: entered }, r => {
     if (r && r.ok) {
       unlockUntil = r.unlockUntil;
+      unlockSource = 'full';
       renderUnlockState();
       startUnlockCountdown();
     } else if (r && r.reason === 'expired') {
@@ -235,8 +261,9 @@ codeInput.addEventListener('keydown', e => {
 codeCancelBtn.addEventListener('click', showIdle);
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.unlockUntil) {
-    unlockUntil = changes.unlockUntil.newValue || 0;
+  if (area === 'sync' && (changes.unlockUntil || changes.unlockSource)) {
+    if (changes.unlockSource) unlockSource = changes.unlockSource.newValue || null;
+    if (changes.unlockUntil) unlockUntil = changes.unlockUntil.newValue || 0;
     if (unlockUntil - Date.now() > 0) {
       renderUnlockState();
       startUnlockCountdown();
@@ -248,10 +275,15 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 chrome.runtime.sendMessage({ action: 'getBlockedSites' }, r => {
   unlockUntil = r.unlockUntil || 0;
+  unlockSource = r.unlockSource || null;
   if (unlockUntil - Date.now() > 0) {
     renderUnlockState();
     startUnlockCountdown();
   }
+});
+
+chrome.runtime.sendMessage({ action: 'getQuickCheckCount' }, r => {
+  renderQuickCount((r && r.count) || 0);
 });
 
 loadHistory();

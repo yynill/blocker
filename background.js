@@ -10,6 +10,7 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(consol
 
 const MAX_HISTORY = 50;
 const UNLOCK_MS = 60 * 60 * 1000;
+const QUICK_UNLOCK_MS = 90 * 1000;
 const CODE_TTL_MS = 3 * 60 * 1000;
 // Excludes 0/O/1/I/L — characters that get misread when hand-typing a code
 // off the screen, which would add friction for the wrong reason.
@@ -43,6 +44,26 @@ async function addToHistory(url, domain) {
     blockedHistory.unshift({ url, domain, time: now });
     blockedHistory.length = Math.min(blockedHistory.length, MAX_HISTORY);
     await chrome.storage.local.set({ blockedHistory });
+}
+
+function todayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Counter resets itself by comparing the stored date to today rather than
+// via an alarm/cron — cheaper and can't drift if the worker was asleep at midnight.
+async function bumpQuickCheckCount() {
+    const today = todayKey();
+    const { quickCheckStats = {} } = await chrome.storage.local.get('quickCheckStats');
+    const count = (quickCheckStats.date === today ? quickCheckStats.count : 0) + 1;
+    await chrome.storage.local.set({ quickCheckStats: { date: today, count } });
+    return count;
+}
+
+async function getQuickCheckCount() {
+    const { quickCheckStats = {} } = await chrome.storage.local.get('quickCheckStats');
+    return quickCheckStats.date === todayKey() ? quickCheckStats.count : 0;
 }
 
 const UNLOCK_END_ALARM = 'unlockEnd';
@@ -93,8 +114,8 @@ chrome.storage.sync.get('unlockUntil').then(({ unlockUntil = 0 }) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'getBlockedSites') {
-        chrome.storage.sync.get('unlockUntil').then(({ unlockUntil = 0 }) => {
-            sendResponse({ blockedSites: BLOCKED_SITES, unlockUntil });
+        chrome.storage.sync.get(['unlockUntil', 'unlockSource']).then(({ unlockUntil = 0, unlockSource = null }) => {
+            sendResponse({ blockedSites: BLOCKED_SITES, unlockUntil, unlockSource });
         });
         return true;
     } else if (message.action === 'requestUnlockCode') {
@@ -116,16 +137,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
             const unlockUntil = Date.now() + UNLOCK_MS;
             await Promise.all([
-                chrome.storage.sync.set({ unlockUntil }),
+                chrome.storage.sync.set({ unlockUntil, unlockSource: 'full' }),
                 chrome.alarms.create(UNLOCK_END_ALARM, { when: unlockUntil }),
                 chrome.storage.session.remove(['pendingCode', 'pendingCodeExpiresAt']),
             ]);
             sendResponse({ ok: true, unlockUntil });
         });
         return true;
+    } else if (message.action === 'quickUnlock') {
+        // No wait, no code — for a genuinely brief check. Extends rather than
+        // shortens an existing unlock, so it can never cut a longer one down —
+        // but re-clicking while a quick unlock is already running pushes
+        // "now + QUICK_UNLOCK_MS" past the current end time, which resets the
+        // countdown back to a fresh QUICK_UNLOCK_MS.
+        chrome.storage.sync.get('unlockUntil').then(async ({ unlockUntil = 0 }) => {
+            const newUntil = Math.max(unlockUntil, Date.now() + QUICK_UNLOCK_MS);
+            const count = await bumpQuickCheckCount();
+            await Promise.all([
+                chrome.storage.sync.set({ unlockUntil: newUntil, unlockSource: 'quick' }),
+                chrome.alarms.create(UNLOCK_END_ALARM, { when: newUntil }),
+            ]);
+            sendResponse({ ok: true, unlockUntil: newUntil, count });
+        });
+        return true;
+    } else if (message.action === 'getQuickCheckCount') {
+        getQuickCheckCount().then(count => sendResponse({ count }));
+        return true;
     } else if (message.action === 'relock') {
         Promise.all([
-            chrome.storage.sync.set({ unlockUntil: 0 }),
+            chrome.storage.sync.set({ unlockUntil: 0, unlockSource: null }),
             chrome.alarms.clear(UNLOCK_END_ALARM),
         ]).then(async () => {
             const tabs = await chrome.tabs.query({});

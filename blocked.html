@@ -83,6 +83,17 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .saved-url:visited {
+            color: #777;
+        }
+
+        .saved-url:hover {
+            color: #ccc;
+            text-decoration: underline;
         }
 
         button {
@@ -120,7 +131,7 @@
         <h1 id="headline">You will die.</h1>
         <p class="domain" id="domain-name"></p>
         <div class="saved-url-row" id="saved-url-row">
-            <span class="saved-url" id="saved-url"></span>
+            <a class="saved-url" id="saved-url" href="#"></a>
             <button class="copy-btn" id="copy-btn">Copy link</button>
         </div>
         <button id="close-btn">Close this tab</button>
